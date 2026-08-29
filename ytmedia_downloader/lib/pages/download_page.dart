@@ -281,7 +281,7 @@ class _MusicCardState extends State<MusicCard> {
       // setState(() {
       //   _currentSliderValue = mc!.sliderValue ;
       // });
-    } else {
+    } else if (mc == null) {
       // print("\nxxxxxxxxxxx- mc is null for ${widget.index}, ${identityHashCode(mc).toRadixString(16)}\n");
       widget.stateStore[widget.index] = MusicCardStateModel();
       mc = widget.stateStore[widget.index];
@@ -313,13 +313,6 @@ class _MusicCardState extends State<MusicCard> {
               if (isPlayerInit == false){
                 if (widget.player!.isAcquired){
                   print('player not acquired yet.');
-                  // widget.playerNotifier.value.acquiredBy!.isPlayerInit = false;
-                  // widget.playerNotifier.value.acquiredBy!._isPlaying = false;
-                  // print('d1');
-                  // widget.playerNotifier.value.acquiredBy!._currentDurationSubStream!.cancel();
-                  // widget.playerNotifier.value.acquiredBy!._currentDurationSubStream = null;
-                  // print('d2');
-                  // widget.playerNotifier.value.acquiredBy!._currentDurationStream = null;
                   widget.playerNotifier.value = MyAudioPlayer();
                   if (widget.player!.acquiredBy!._currentDurationSubStream == null){
                     print("previous widget c duration stream is null");
