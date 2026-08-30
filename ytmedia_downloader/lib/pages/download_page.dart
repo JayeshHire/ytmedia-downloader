@@ -193,10 +193,8 @@ class MusicCard extends StatefulWidget {
     required this.singer,
     required this.composer,
     required this.source,
-    required this.player,
-    required this.playerNotifier,
     required this.val,
-    required this.stateStore,
+    required this.state,
     required this.index
     });
   
@@ -204,10 +202,9 @@ class MusicCard extends StatefulWidget {
   String singer;
   String composer;
   String source;
-  MyAudioPlayer player;
-  ValueNotifier<MyAudioPlayer> playerNotifier;
+  AudioPlayer player = AudioPlayer();
   ValueNotifier<int> val;
-  Map<int, MusicCardStateModel> stateStore;
+  MusicCardStateModel state;
   int index;
 
   State<MusicCard> createState() => _MusicCardState() ;
@@ -215,78 +212,82 @@ class MusicCard extends StatefulWidget {
 
 class _MusicCardState extends State<MusicCard> {
   bool _isPlaying = false;
-  double _currentSliderValue = 0;
+  Duration _currentSliderValue = Duration(milliseconds: 0);
   bool isPlayerInit = false;
   bool isPlayerOn = false;
+  PlayerState? playerState;
   Duration? _duration; 
   bool _isDurationLoading = true;
   StreamSubscription<Duration>? _totalDurationStream;
   MyAudioPlayer? _player;
-  Stream<Duration>? _currentDurationStream;
+  // Stream<Duration>? _currentDurationStream;
   StreamSubscription<Duration>? _currentDurationSubStream;
+  StreamSubscription<Duration>? ds ;
 
   // set player(MyAudioPlayer? p){
   //   _player = p;
   // }
 
+  Future<void> loadData() async {
+    _currentSliderValue = widget.state.currentPosition;
+    _duration = widget.state.totalDuration ;
+    playerState = widget.state.playerState ;
+
+    await widget.player.setSourceUrl(widget.source);
+
+    print("xxxxxxxxx inside loadDate()");
+    print("${widget.state.currentPosition}, ${widget.state.totalDuration}");
+    Stream<Duration> d = widget.player.onDurationChanged ;
+    if (_duration!.inMilliseconds.toInt() == 0){
+      ds = d.listen(
+        (d) {
+          setState(() {
+            _duration = d;
+          });
+          widget.state.totalDuration ;
+        }
+      );
+    }
+    
+    await widget.player.seek(_currentSliderValue);
+    
+    if (playerState == PlayerState.playing ){
+      await widget.player.resume();
+    } 
+    // else {
+    //   await widget.player.pause();
+    // }
+
+    _currentDurationSubStream = widget.player.onPositionChanged.listen((d) {
+      setState(() {
+        _currentSliderValue = d;
+      });
+    });
+    
+  }
+
   @override
   void initState(){
     super.initState();
+    loadData();
   }
 
   @override
   void dispose(){
-    _currentDurationSubStream?.cancel();
-    _totalDurationStream?.cancel();
-    _currentDurationStream = null;
+    print("disposing stream ${_currentSliderValue}, ${_duration}");
+    widget.state.currentPosition = _currentSliderValue ;
+    widget.state.playerState = playerState! ;
+    widget.state.totalDuration = _duration! ;
+    _currentDurationSubStream!.cancel() ;
+    ds!.cancel();
+    // widget.player.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadDuration() async {
-    print("inside load duration func");
-    MusicCardStateModel? mc = widget.stateStore[widget.index] ;
-    
-    if (mc != null && mc?.duration != 0){
-      _duration = Duration(microseconds: (mc._duration*1000).round());
-      _isDurationLoading = false;
-    } else {
-      Stream<Duration> stream = await widget.player!.onDurationChanged;
-      _totalDurationStream = stream.listen(
-        (data){
-          setState(() {
-            _duration = data;
-            _isDurationLoading = false;
-          });
-          // print(_duration);
-        }
-      );
-      mc?._duration = _duration!.inMicroseconds.toDouble();
-    }
   }
 
   @override
   Widget build(BuildContext context){
 
-    MusicCardStateModel? mc = widget.stateStore[widget.index] ;
-    // print("${mc}");
-    // print("mc duration: ${mc?._duration}");
-    if (mc != null && mc._duration != 0){
-      // print("\nxxxxxxxxxxxx- mc is not null for ${widget.index}, ${identityHashCode(mc).toRadixString(16)}\n");
-
-      _duration = Duration(microseconds: (mc._duration*1000).round());
-      _isDurationLoading = false;
-      // isPlayerInit = true;
-      _isPlaying = mc._isPlaying;
-      // widget.player = mc?.player ?? widget.player;
-      // setState(() {
-      //   _currentSliderValue = mc!.sliderValue ;
-      // });
-    } else if (mc == null) {
-      // print("\nxxxxxxxxxxx- mc is null for ${widget.index}, ${identityHashCode(mc).toRadixString(16)}\n");
-      widget.stateStore[widget.index] = MusicCardStateModel();
-      mc = widget.stateStore[widget.index];
-      // mc?.player = widget.player;
-    }
+    
     
     return Card(
       child: Column(
@@ -296,107 +297,43 @@ class _MusicCardState extends State<MusicCard> {
           subtitle: Text("singer: ${widget.singer}, Composer: ${widget.composer}"),
           trailing: InkWell(
             onTap: () async {
-              
-              // _player = widget.player;
-              
-              // widget.player.acquiredBy?.player = null;
-              // widget.player.acquiredBy = this ;
-              // widget.player.acquiredBy?.player = widget.player;
-              // widget.player.isAcquired = true;
-              print('previous value ${widget.val.value}');
-              widget.val.value ++;
-              print('new value is ${widget.val.value}');
-              if (widget.player.acquiredBy != this && isPlayerInit == true){
-                isPlayerInit = false;
+              print(playerState);
+              if (playerState == PlayerState.stopped || playerState == PlayerState.paused){
+                print("hii");
+                await widget.player.resume();
+                setState(() {
+                  playerState = PlayerState.playing ;
+                });
               }
-
-              if (isPlayerInit == false){
-                if (widget.player!.isAcquired){
-                  print('player not acquired yet.');
-                  widget.playerNotifier.value = MyAudioPlayer();
-                  if (widget.player!.acquiredBy!._currentDurationSubStream == null){
-                    print("previous widget c duration stream is null");
-                  }
-                  widget.playerNotifier.value.acquiredBy = this;
-                  print('previously acquired player');
-                  print(widget.player.acquiredBy);
-                  // setState(() {
-                  //   widget.player!.acquiredBy!.isPlayerInit = false;
-                  //   widget.player!.acquiredBy!._isPlaying = false;
-                  //   print("duration stream: ${widget.player!.acquiredBy!._currentDurationStream}");
-                  //   widget.player!.acquiredBy!._currentDurationSubStream!.cancel();
-                  //   widget.player!.acquiredBy!._currentDurationStream = null;
-                  //   widget.player!.acquiredBy = this;
-                  // });
-
-                } else {
-                  widget.playerNotifier.value = MyAudioPlayer();
-                  widget.playerNotifier.value.acquiredBy = this;
-                  widget.playerNotifier.value.isAcquired = true;
-                  // widget.player!.acquiredBy = this;
-                  // widget.player!.isAcquired = true;
-                }
-                // await widget.player!.setSourceUrl(widget.source);
-                // await widget.player!.seek(Duration(milliseconds: 0));
-                await widget.playerNotifier.value.setSourceUrl(widget.source);
-                await widget.playerNotifier.value.seek(Duration(milliseconds: 0));
-                await Future.delayed(const Duration(seconds: 1));
-                isPlayerInit = true;
+              else if (playerState == PlayerState.playing){
+                await widget.player.pause();
+                setState(() {
+                  playerState = PlayerState.paused ;
+                });
               }
-
-              _loadDuration();
-              print("is player present: ${widget.player!.acquiredBy}");
-              if (widget.player!.acquiredBy == this){
-                _currentDurationStream = widget.player!.onPositionChanged ;
-                print("acquired by ${widget.player!.acquiredBy} 352");
-                // print()
-                  _currentDurationSubStream = _currentDurationStream!.listen(
-                  (data) {
-                    setState(() {
-                      _currentSliderValue = data.inMilliseconds.toDouble();
-                      if (_currentSliderValue == _duration!.inMilliseconds.toDouble()){
-                        _isPlaying = false;
-                        print("isPlaying: $_isPlaying");
-                      }
-                    });
-                    // print(_currentSliderValue);
-                  }
-                );
-              } else {
-                print("not acquired by this");
-                _currentDurationStream = null;
-              }
-
-              if (_isPlaying){ // if player is playing then pause it
-                mc?.isPlaying = false;
-                await widget.player!.pause();
-              } else {
-                mc?.isPlaying = true;
-                await widget.player!.resume();
-              }
-              setState(() {
-                _isPlaying = !_isPlaying;
-              });
             },
-            child: switch(_isPlaying){
-              true => Icon(
+            child: switch(playerState){
+              PlayerState.stopped || PlayerState.paused => Icon(
+                Icons.play_arrow
+              ),
+              PlayerState.playing => Icon(
                 Icons.pause
               ),
-              false => Icon(
+              _ => Icon(
                 Icons.play_arrow
               )
             },
           ),
         ),
         Slider(
-          value: _currentSliderValue,
-          max: _isDurationLoading ? 4000 : _duration!.inMilliseconds.toDouble(),
+          value: _currentSliderValue.inMilliseconds.toDouble(),
+          max: _duration!.inMilliseconds.toDouble() == 0? 4000: _duration!.inMilliseconds.toDouble(),
           onChanged: (double value) async {
             setState(() {
-              _currentSliderValue = value;
+              _currentSliderValue = Duration(milliseconds: value.toInt());
             });
-            mc?.sliderValue = _currentSliderValue;
-            await widget.player!.seek(Duration(milliseconds: value.toInt()));
+            // state.sliderValue = _currentSliderValue;
+            await widget.player.seek(Duration(milliseconds: value.toInt()));
           },
         )
         ],
@@ -407,34 +344,11 @@ class _MusicCardState extends State<MusicCard> {
 
 
 class MusicCardStateModel /*extends ChangeNotifier*/ {
-  double _sliderValue = 0;
-  double _duration = 0;
-  bool _isPlaying = false;
-  // MyAudioPlayer? _player ;
+  Duration currentPosition;
+  Duration totalDuration;
+  PlayerState playerState;
 
-  double get sliderValue => _sliderValue ;
-  double get duration => _duration ;
-  bool get isPlaying => _isPlaying;
-  // MyAudioPlayer? get player => _player;
-
-  set sliderValue(double val){
-    _sliderValue = val;
-    // notifyListeners();
-  }
-
-  set duration(double d){
-    _duration = d;
-    // notifyListeners();
-  }
-
-  set isPlaying(bool isP){
-    _isPlaying = isP;
-    // notifyListeners();
-  }
-
-  // set player(MyAudioPlayer? p){
-  //   _player = p;
-  // }
+  MusicCardStateModel(this.currentPosition, this.totalDuration, this.playerState);
 }
 
 class MusicCardList extends StatelessWidget {
@@ -442,34 +356,60 @@ class MusicCardList extends StatelessWidget {
 
   Map<int, MusicCardStateModel> mCStateStore = {};
 
-  // final player = MyAudioPlayer();
-  final ValueNotifier<MyAudioPlayer> playerNotifier = ValueNotifier<MyAudioPlayer>(MyAudioPlayer());
-
   final ValueNotifier<int> val = ValueNotifier<int>(0);
 
+  void loadData() {
+    String source = "assets/Free-WAV-Sample.mp3";
+    for (int i = 0; i< 10; i++){
+      MusicCardStateModel mcs = MusicCardStateModel(
+        Duration(milliseconds: 0), 
+        Duration(milliseconds: 0), 
+        PlayerState.stopped);
+      mCStateStore[i] = mcs;
+    }
+  }
+
+  // @override 
+  // void initState(){
+  //   super.initState();
+  //   loadData();
+  // }
 
   @override
-  Widget build(BuildContext context){
-    return ValueListenableBuilder<MyAudioPlayer>(
-      valueListenable: playerNotifier, 
-      builder: (BuildContext context, MyAudioPlayer player, Widget? child){
-        return ListView(
-          children: <Widget>[
-            for (int i =0; i < 10; i++)
-              MusicCard(
-                title: "Title of the song", 
-                singer: "Dummy Singer", 
-                composer: "Dummy Composer", 
-                source: "assets/Free-WAV-Sample.mp3",
-                player: player,
-                playerNotifier: playerNotifier,
-                val: val,
-                stateStore: mCStateStore,
-                index: i,
-                )
-          ],
-        );
-      });
+  Widget build(BuildContext context) {
+
+    // return FutureBuilder<void>(
+    //   future: loadData(), 
+    //   builder: (context, snapshot){
+    //     if (snapshot.connectionState == ConnectionState.waiting){
+    //       return CircularProgressIndicator();
+    //     } 
+        
+    //     if (snapshot.hasError){
+    //       return Text("Error: ${snapshot.error}");
+    //     }
+
+        // if (snapshot.hasData){
+        loadData();
+          return ListView(
+                children: <Widget>[
+                  for (int i =0; i < 10; i++)
+                    MusicCard(
+                      title: "Title of the song", 
+                      singer: "Dummy Singer", 
+                      composer: "Dummy Composer", 
+                      source: "assets/Free-WAV-Sample.mp3",
+                      val: val,
+                      state: mCStateStore[i]!,
+                      index: i,
+                      )
+                ],
+              );
+        // }
+
+        // return Text("no data");
+      // }
+      // );
   }
 }
 
