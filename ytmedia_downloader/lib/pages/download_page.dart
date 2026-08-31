@@ -229,9 +229,16 @@ class _MusicCardState extends State<MusicCard> {
   // }
 
   Future<void> loadData() async {
-    _currentSliderValue = widget.state.currentPosition;
+    print("currentPosition: ${widget.state.currentPosition}");
+    setState(() {
+      _currentSliderValue = widget.state.currentPosition;
+    });
+    print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
     _duration = widget.state.totalDuration ;
     playerState = widget.state.playerState ;
+
+    // cancelling the sub for dormantCurrentDuration
+    widget.state.dormantCurrentDurationSub?.cancel();
 
     await widget.player.setSourceUrl(widget.source);
 
@@ -250,7 +257,7 @@ class _MusicCardState extends State<MusicCard> {
     }
     
     await widget.player.seek(_currentSliderValue);
-    
+    await widget.player.pause();
     if (playerState == PlayerState.playing ){
       await widget.player.resume();
     } 
@@ -279,6 +286,15 @@ class _MusicCardState extends State<MusicCard> {
     widget.state.playerState = playerState! ;
     widget.state.totalDuration = _duration! ;
     _currentDurationSubStream!.cancel() ;
+    if (playerState == PlayerState.playing){
+      print("initializing dormantCurrentDurationSub");
+      print("${widget.player}");
+      widget.state.dormantCurrentDurationSub = widget.player.onPositionChanged.listen(
+        (d){
+          widget.state.currentPosition = d;
+        }
+      );
+    }
     ds!.cancel();
     // widget.player.dispose();
     super.dispose();
@@ -347,6 +363,7 @@ class MusicCardStateModel /*extends ChangeNotifier*/ {
   Duration currentPosition;
   Duration totalDuration;
   PlayerState playerState;
+  StreamSubscription<Duration>? dormantCurrentDurationSub ;
 
   MusicCardStateModel(this.currentPosition, this.totalDuration, this.playerState);
 }
