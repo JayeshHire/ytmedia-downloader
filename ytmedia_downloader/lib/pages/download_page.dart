@@ -230,9 +230,7 @@ class _MusicCardState extends State<MusicCard> {
 
   Future<void> loadData() async {
     print("currentPosition: ${widget.state.currentPosition}");
-    setState(() {
-      _currentSliderValue = widget.state.currentPosition;
-    });
+    _currentSliderValue = widget.state.currentPosition;
     print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
     _duration = widget.state.totalDuration ;
     playerState = widget.state.playerState ;
