@@ -176,6 +176,20 @@ class MyAudioPlayer extends AudioPlayer {
   _MusicCardState? acquiredBy ;
 }
 
+enum PlayerStreamEvent{
+  SEEKER_EVENT,
+  DISPOSE_EVENT_REQ, //dispose event request
+  INITIALIZE_EVENT,
+  DISPOSE_EVENT_COMP // dispose event complete
+}
+
+class PlayerStreamData {
+  int idx;
+  PlayerStreamEvent event;
+
+  PlayerStreamData(this.idx, this.event);
+}
+
 /*
  * Creating a controller for controlling the audio.
  * controller will be doing following things:
@@ -195,7 +209,8 @@ class MusicCard extends StatefulWidget {
     required this.source,
     required this.val,
     required this.state,
-    required this.index
+    required this.index,
+    required this.playerController
     });
   
   String title;
@@ -206,6 +221,7 @@ class MusicCard extends StatefulWidget {
   ValueNotifier<int> val;
   MusicCardStateModel state;
   int index;
+  StreamController<PlayerStreamData> playerController;
 
   State<MusicCard> createState() => _MusicCardState() ;
 }
@@ -224,9 +240,51 @@ class _MusicCardState extends State<MusicCard> {
   StreamSubscription<Duration>? _currentDurationSubStream;
   StreamSubscription<Duration>? ds ;
 
+  StreamSubscription<PlayerStreamData>? disposePlayerSub;
+
+  StreamSubscription<PlayerStreamData>? initializePlayerSub;
   // set player(MyAudioPlayer? p){
   //   _player = p;
   // }
+
+  void seekPlayer(){
+    widget.playerController.sink.add(
+      PlayerStreamData(widget.index, PlayerStreamEvent.SEEKER_EVENT)
+    );
+  }
+
+  void softDisposePlayer(){
+    // initialize this 
+    disposePlayerSub = widget.playerController.stream.listen(
+      (e){
+        if (e.event == PlayerStreamEvent.DISPOSE_EVENT_REQ
+        && e.idx == widget.index
+        ){
+          // dispose the player resource here
+
+          // after disposing the player resource send dispose event complete to the stream.
+          widget.playerController.sink.add(
+            PlayerStreamData(widget.index, PlayerStreamEvent.DISPOSE_EVENT_COMP)
+          );
+        }
+      }
+    );
+  }
+
+  void initializePlayer(){
+    initializePlayerSub = widget.playerController.stream.listen(
+      (e){
+        if (e.event == PlayerStreamEvent.INITIALIZE_EVENT
+        && e.idx == widget.index
+        ){
+          // initialize all the subscription to the player
+          // set the source of player
+          // restore state of player
+          // start the player
+        }
+      }
+    );
+  }
 
   Future<void> loadData() async {
     print("currentPosition: ${widget.state.currentPosition}");
@@ -373,6 +431,8 @@ class MusicCardList extends StatelessWidget {
 
   final ValueNotifier<int> val = ValueNotifier<int>(0);
 
+  StreamController<PlayerStreamData> playerController = StreamController<PlayerStreamData>.broadcast();
+
   void loadData() {
     String source = "assets/Free-WAV-Sample.mp3";
     for (int i = 0; i< 10; i++){
@@ -392,7 +452,29 @@ class MusicCardList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
+    int ownerIdx = -1;
+    StreamSubscription<PlayerStreamData> controllerHub = playerController.stream.listen(
+      (e) {
+        if (e.event == PlayerStreamEvent.SEEKER_EVENT){
+          if (ownerIdx == -1){
+            playerController.sink.add(
+              PlayerStreamData(e.idx, PlayerStreamEvent.INITIALIZE_EVENT)
+            );
+            ownerIdx = e.idx;
+          } else {
+            playerController.sink.add(
+              PlayerStreamData(ownerIdx, PlayerStreamEvent.DISPOSE_EVENT_REQ)
+            );
+            ownerIdx = e.idx;
+          }
+        } 
+        else if (e.event == PlayerStreamEvent.DISPOSE_EVENT_COMP){
+          playerController.sink.add(
+            PlayerStreamData(ownerIdx, PlayerStreamEvent.INITIALIZE_EVENT)
+          );
+        }
+      }
+    );
     // return FutureBuilder<void>(
     //   future: loadData(), 
     //   builder: (context, snapshot){
@@ -417,6 +499,7 @@ class MusicCardList extends StatelessWidget {
                       val: val,
                       state: mCStateStore[i]!,
                       index: i,
+                      playerController: playerController,
                       )
                 ],
               );
