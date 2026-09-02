@@ -1,4 +1,0 @@
-curl \
-  'https://youtube.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=surfing&key=AIzaSyBmEZpEoo_KXvw56dhX0dPTIoALMTe1Cgg' \
-  --header 'Accept: application/json' \
-  --compressed
