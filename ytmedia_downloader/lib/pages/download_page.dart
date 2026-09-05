@@ -288,9 +288,9 @@ class _MusicCardState extends State<MusicCard> {
           widget.state.totalDuration = _duration! ;
           widget.state.playerState = PlayerState.paused ;
 
-          setState(() {
+          // setState(() {
             playerState = PlayerState.paused ;
-          });
+          // });
 
           playerComESub?.cancel();
 
@@ -322,9 +322,9 @@ class _MusicCardState extends State<MusicCard> {
 
           print("received a initialize request of player for idx: ${widget.index}");
 
-          setState(() {
-            playerState = PlayerState.playing;
-          });
+          // setState(() {
+          playerState = PlayerState.playing;
+          // });
 
           await widget.player.setSourceUrl(widget.source);
 
@@ -349,15 +349,16 @@ class _MusicCardState extends State<MusicCard> {
             });
           });
 
-          playerComESub = widget.player.onPlayerComplete.listen((_) async {
-            await widget.player.dispose();
+          playerComESub = widget.player.onPlayerComplete.listen((_) {
+            // await widget.player.dispose();
+            print("cxx-- completed running");
             widget.state.currentPosition = Duration(milliseconds: 0);
             _currentSliderValue = Duration(milliseconds: 0);
             widget.state.playerState = PlayerState.paused;
             
-            setState(() {
+            // setState(() {
               playerState = PlayerState.paused ;
-            });
+            // });
             widget.playerController.sink.add(
               PlayerStreamData(idx: widget.index,event: PlayerStreamEvent.PLAYBACK_COMPLETED)
             );
@@ -564,7 +565,7 @@ class MusicCardList extends StatelessWidget {
         print("current event: ${e.event}, index: ${e.idx}");
         if (e.event == PlayerStreamEvent.SEEKER_EVENT){
           if (ownerIdx == -1
-          || ownerIdx == e.idx
+          // || ownerIdx == e.idx
           ){
             playerController.sink.add(
               PlayerStreamData(idx: e.idx, event: PlayerStreamEvent.INITIALIZE_EVENT)
