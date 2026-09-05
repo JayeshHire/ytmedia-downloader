@@ -180,14 +180,17 @@ enum PlayerStreamEvent{
   SEEKER_EVENT,
   DISPOSE_EVENT_REQ, //dispose event request
   INITIALIZE_EVENT,
-  DISPOSE_EVENT_COMP // dispose event complete
+  DISPOSE_EVENT_COMP, // dispose event complete
+  PLAYBACK_COMPLETED, // previous running playback has completed
+  NEW_PLAYER_READY, // new player is ready
 }
 
 class PlayerStreamData {
   int idx;
   PlayerStreamEvent event;
+  AudioPlayer? player;
 
-  PlayerStreamData(this.idx, this.event);
+  PlayerStreamData({required this.idx, required this.event, this.player});
 }
 
 /*
@@ -210,14 +213,15 @@ class MusicCard extends StatefulWidget {
     required this.val,
     required this.state,
     required this.index,
-    required this.playerController
+    required this.playerController,
+    required this.player
     });
   
   String title;
   String singer;
   String composer;
   String source;
-  AudioPlayer player = AudioPlayer();
+  AudioPlayer player;
   ValueNotifier<int> val;
   MusicCardStateModel state;
   int index;
@@ -239,6 +243,8 @@ class _MusicCardState extends State<MusicCard> {
   // Stream<Duration>? _currentDurationStream;
   StreamSubscription<Duration>? _currentDurationSubStream;
   StreamSubscription<Duration>? ds ;
+  StreamSubscription<void>? playerComESub ;
+  StreamSubscription<PlayerStreamData>? newPlayerSub;
 
   StreamSubscription<PlayerStreamData>? disposePlayerSub;
 
@@ -247,9 +253,21 @@ class _MusicCardState extends State<MusicCard> {
   //   _player = p;
   // }
 
+  void initNewPlayer(){
+    // this function will assign player the newly created audioPlayer
+    newPlayerSub = widget.playerController.stream.listen(
+      (e) {
+        if (e.event == PlayerStreamEvent.NEW_PLAYER_READY){
+          widget.player = e.player!;
+        }
+      }
+    );
+  }
+
   void seekPlayer(){
+    print("sending a seeker request for idx: ${widget.index}");
     widget.playerController.sink.add(
-      PlayerStreamData(widget.index, PlayerStreamEvent.SEEKER_EVENT)
+      PlayerStreamData(idx: widget.index, event: PlayerStreamEvent.SEEKER_EVENT)
     );
   }
 
@@ -257,23 +275,41 @@ class _MusicCardState extends State<MusicCard> {
     // initialize this 
     disposePlayerSub = widget.playerController.stream.listen(
       (e){
+        print("current idx: ${widget.index}");
         if (e.event == PlayerStreamEvent.DISPOSE_EVENT_REQ
         && e.idx == widget.index
         ){
+          print("received a soft dispose request of player for idx: ${widget.index}");
           // dispose the player resource here
+          _currentDurationSubStream!.cancel();
+          ds?.cancel();
+          widget.state.dormantCurrentDurationSub?.cancel();
+          widget.state.currentPosition = _currentSliderValue;
+          widget.state.totalDuration = _duration! ;
+          widget.state.playerState = PlayerState.paused ;
+
+          setState(() {
+            playerState = PlayerState.paused ;
+          });
+
+          playerComESub?.cancel();
 
           // after disposing the player resource send dispose event complete to the stream.
           widget.playerController.sink.add(
-            PlayerStreamData(widget.index, PlayerStreamEvent.DISPOSE_EVENT_COMP)
+            PlayerStreamData(idx: widget.index, event: PlayerStreamEvent.DISPOSE_EVENT_COMP)
           );
         }
       }
     );
   }
 
-  void initializePlayer(){
+  void initializePlayer() async {
+    // this function is fired when the player is not being played by 
+    // the current widget.
+    // This function acquires the resources of player and sets them.
+
     initializePlayerSub = widget.playerController.stream.listen(
-      (e){
+      (e) async {
         if (e.event == PlayerStreamEvent.INITIALIZE_EVENT
         && e.idx == widget.index
         ){
@@ -281,51 +317,100 @@ class _MusicCardState extends State<MusicCard> {
           // set the source of player
           // restore state of player
           // start the player
+          // _currentSliderValue = widget.state.currentPosition;
+          // _duration = widget.state.totalDuration ;
+
+          print("received a initialize request of player for idx: ${widget.index}");
+
+          setState(() {
+            playerState = PlayerState.playing;
+          });
+
+          await widget.player.setSourceUrl(widget.source);
+
+          if (_duration!.inMilliseconds.toInt() == 0){
+            ds = widget.player.onDurationChanged.listen(
+              (d) {
+                setState(() {
+                  _duration = d;
+                });
+              }
+            );
+          }
+
+          print("currentSliderValue: ${_currentSliderValue}");
+          await widget.player.seek(_currentSliderValue);
+          await widget.player.pause();
+          await widget.player.resume();
+
+          _currentDurationSubStream = widget.player.onPositionChanged.listen((d) {
+            setState(() {
+              _currentSliderValue = d;
+            });
+          });
+
+          playerComESub = widget.player.onPlayerComplete.listen((_) async {
+            await widget.player.dispose();
+            widget.state.currentPosition = Duration(milliseconds: 0);
+            _currentSliderValue = Duration(milliseconds: 0);
+            widget.state.playerState = PlayerState.paused;
+            
+            setState(() {
+              playerState = PlayerState.paused ;
+            });
+            widget.playerController.sink.add(
+              PlayerStreamData(idx: widget.index,event: PlayerStreamEvent.PLAYBACK_COMPLETED)
+            );
+          });
         }
       }
     );
   }
 
   Future<void> loadData() async {
-    print("currentPosition: ${widget.state.currentPosition}");
+    // print("currentPosition: ${widget.state.currentPosition}");
     _currentSliderValue = widget.state.currentPosition;
-    print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
+    // print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
     _duration = widget.state.totalDuration ;
     playerState = widget.state.playerState ;
 
     // cancelling the sub for dormantCurrentDuration
     widget.state.dormantCurrentDurationSub?.cancel();
 
-    await widget.player.setSourceUrl(widget.source);
+    // await widget.player.setSourceUrl(widget.source);
 
     print("xxxxxxxxx inside loadDate()");
     print("${widget.state.currentPosition}, ${widget.state.totalDuration}");
-    Stream<Duration> d = widget.player.onDurationChanged ;
-    if (_duration!.inMilliseconds.toInt() == 0){
-      ds = d.listen(
-        (d) {
-          setState(() {
-            _duration = d;
-          });
-          widget.state.totalDuration ;
-        }
-      );
-    }
-    
-    await widget.player.seek(_currentSliderValue);
-    await widget.player.pause();
-    if (playerState == PlayerState.playing ){
-      await widget.player.resume();
-    } 
-    // else {
-    //   await widget.player.pause();
+    // Stream<Duration> d = widget.player.onDurationChanged ;
+    // if (_duration!.inMilliseconds.toInt() == 0){
+    //   ds = d.listen(
+    //     (d) {
+    //       setState(() {
+    //         _duration = d;
+    //       });
+    //       widget.state.totalDuration ;
+    //     }
+    //   );
     // }
+    
+    // await widget.player.seek(_currentSliderValue);
+    // await widget.player.pause();
+    // if (playerState == PlayerState.playing ){
+    //   await widget.player.resume();
+    // } 
 
-    _currentDurationSubStream = widget.player.onPositionChanged.listen((d) {
-      setState(() {
-        _currentSliderValue = d;
+    if (playerState == PlayerState.playing){
+      _currentDurationSubStream = widget.player.onPositionChanged.listen((d) {
+        setState(() {
+          _currentSliderValue = d;
+        });
       });
-    });
+    }
+    // _currentDurationSubStream = widget.player.onPositionChanged.listen((d) {
+    //   setState(() {
+    //     _currentSliderValue = d;
+    //   });
+    // });
     
   }
 
@@ -333,6 +418,10 @@ class _MusicCardState extends State<MusicCard> {
   void initState(){
     super.initState();
     loadData();
+    initializePlayer();
+    softDisposePlayer();
+    initNewPlayer();
+    print("inside initState: ${_currentSliderValue}");
   }
 
   @override
@@ -353,6 +442,9 @@ class _MusicCardState extends State<MusicCard> {
     }
     ds!.cancel();
     // widget.player.dispose();
+    initializePlayerSub!.cancel();
+    disposePlayerSub!.cancel();
+    newPlayerSub!.cancel();
     super.dispose();
   }
 
@@ -369,20 +461,33 @@ class _MusicCardState extends State<MusicCard> {
           subtitle: Text("singer: ${widget.singer}, Composer: ${widget.composer}"),
           trailing: InkWell(
             onTap: () async {
-              print(playerState);
-              if (playerState == PlayerState.stopped || playerState == PlayerState.paused){
-                print("hii");
-                await widget.player.resume();
-                setState(() {
-                  playerState = PlayerState.playing ;
-                });
-              }
+              if (playerState == PlayerState.paused || 
+                playerState == PlayerState.stopped
+              ){
+                print('sending a request to acquire a player and start playing');
+                seekPlayer();
+              } 
               else if (playerState == PlayerState.playing){
+                print("stopping the player");
                 await widget.player.pause();
                 setState(() {
-                  playerState = PlayerState.paused ;
+                  playerState = PlayerState.stopped;
                 });
               }
+              // print(playerState);
+              // if (playerState == PlayerState.stopped || playerState == PlayerState.paused){
+              //   print("hii");
+              //   await widget.player.resume();
+              //   setState(() {
+              //     playerState = PlayerState.playing ;
+              //   });
+              // }
+              // else if (playerState == PlayerState.playing){
+              //   await widget.player.pause();
+              //   setState(() {
+              //     playerState = PlayerState.paused ;
+              //   });
+              // }
             },
             child: switch(playerState){
               PlayerState.stopped || PlayerState.paused => Icon(
@@ -455,26 +560,36 @@ class MusicCardList extends StatelessWidget {
     int ownerIdx = -1;
     StreamSubscription<PlayerStreamData> controllerHub = playerController.stream.listen(
       (e) {
+        print("inside controller hub: ");
+        print("current event: ${e.event}, index: ${e.idx}");
         if (e.event == PlayerStreamEvent.SEEKER_EVENT){
-          if (ownerIdx == -1){
+          if (ownerIdx == -1
+          || ownerIdx == e.idx
+          ){
             playerController.sink.add(
-              PlayerStreamData(e.idx, PlayerStreamEvent.INITIALIZE_EVENT)
+              PlayerStreamData(idx: e.idx, event: PlayerStreamEvent.INITIALIZE_EVENT)
             );
             ownerIdx = e.idx;
           } else {
             playerController.sink.add(
-              PlayerStreamData(ownerIdx, PlayerStreamEvent.DISPOSE_EVENT_REQ)
+              PlayerStreamData(idx: ownerIdx, event: PlayerStreamEvent.DISPOSE_EVENT_REQ)
             );
             ownerIdx = e.idx;
           }
         } 
         else if (e.event == PlayerStreamEvent.DISPOSE_EVENT_COMP){
           playerController.sink.add(
-            PlayerStreamData(ownerIdx, PlayerStreamEvent.INITIALIZE_EVENT)
+            PlayerStreamData(idx: ownerIdx, event: PlayerStreamEvent.INITIALIZE_EVENT)
+          );
+        }
+        else if (e.event == PlayerStreamEvent.PLAYBACK_COMPLETED){
+          playerController.sink.add(
+            PlayerStreamData(idx: e.idx, event: PlayerStreamEvent.NEW_PLAYER_READY, player: AudioPlayer())
           );
         }
       }
     );
+    AudioPlayer player = AudioPlayer();
     // return FutureBuilder<void>(
     //   future: loadData(), 
     //   builder: (context, snapshot){
@@ -500,6 +615,7 @@ class MusicCardList extends StatelessWidget {
                       state: mCStateStore[i]!,
                       index: i,
                       playerController: playerController,
+                      player: player 
                       )
                 ],
               );
