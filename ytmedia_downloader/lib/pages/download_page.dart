@@ -321,7 +321,7 @@ class _MusicCardState extends State<MusicCard> {
           // _duration = widget.state.totalDuration ;
 
           print("received a initialize request of player for idx: ${widget.index}");
-
+          print("widget idx: ${widget.index}, ${widget.state.currentPosition}, sliderValue: ${_currentSliderValue}");
           // setState(() {
           playerState = PlayerState.playing;
           // });
@@ -352,9 +352,17 @@ class _MusicCardState extends State<MusicCard> {
           playerComESub = widget.player.onPlayerComplete.listen((_) {
             // await widget.player.dispose();
             print("cxx-- completed running");
-            widget.state.currentPosition = Duration(milliseconds: 0);
-            _currentSliderValue = Duration(milliseconds: 0);
-            widget.state.playerState = PlayerState.paused;
+            // if player has completed total duration 
+            // then set currentPosition as 0 and playerState as paused
+            // else set currentPosition as _currentSliderValue and playerState as paused.
+            if (_currentSliderValue.inMilliseconds == widget.state.totalDuration.inMilliseconds){
+              widget.state.currentPosition = _currentSliderValue ;
+              widget.state.playerState = PlayerState.paused ;
+            } else {
+              widget.state.currentPosition = Duration(milliseconds: 0);
+              _currentSliderValue = Duration(milliseconds: 0);
+              widget.state.playerState = PlayerState.paused;
+            }
             
             // setState(() {
               playerState = PlayerState.paused ;
