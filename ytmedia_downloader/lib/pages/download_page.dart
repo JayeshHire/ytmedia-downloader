@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:logging/logging.dart';
 
 class DownloadsPage extends StatelessWidget{
   const DownloadsPage({super.key});
@@ -226,6 +227,7 @@ class MusicCard extends StatefulWidget {
   MusicCardStateModel state;
   int index;
   StreamController<PlayerStreamData> playerController;
+  final _log = Logger('MusicCard');
 
   State<MusicCard> createState() => _MusicCardState() ;
 }
@@ -265,7 +267,8 @@ class _MusicCardState extends State<MusicCard> {
   }
 
   void seekPlayer(){
-    print("sending a seeker request for idx: ${widget.index}");
+    // print("sending a seeker request for idx: ${widget.index}");
+    widget._log.info("sending a seeker request for idx: ${widget.index}");
     widget.playerController.sink.add(
       PlayerStreamData(idx: widget.index, event: PlayerStreamEvent.SEEKER_EVENT)
     );
@@ -275,11 +278,13 @@ class _MusicCardState extends State<MusicCard> {
     // initialize this 
     disposePlayerSub = widget.playerController.stream.listen(
       (e){
-        print("current idx: ${widget.index}");
+        // print("current idx: ${widget.index}");
+        widget._log.info("current idx: ${widget.index}");
         if (e.event == PlayerStreamEvent.DISPOSE_EVENT_REQ
         && e.idx == widget.index
         ){
-          print("received a soft dispose request of player for idx: ${widget.index}");
+          // print("received a soft dispose request of player for idx: ${widget.index}");
+          widget._log.info("received a soft dispose request of player for idx: ${widget.index}");
           // dispose the player resource here
           _currentDurationSubStream!.cancel();
           ds?.cancel();
@@ -320,9 +325,11 @@ class _MusicCardState extends State<MusicCard> {
           // _currentSliderValue = widget.state.currentPosition;
           // _duration = widget.state.totalDuration ;
 
-          print("received a initialize request of player for idx: ${widget.index}");
-          print("widget idx: ${widget.index}, ${widget.state.currentPosition}, sliderValue: ${_currentSliderValue}");
+          // print("received a initialize request of player for idx: ${widget.index}");
+          // print("widget idx: ${widget.index}, ${widget.state.currentPosition}, sliderValue: ${_currentSliderValue}");
           // setState(() {
+          widget._log.info("received a initialize request of player for idx: ${widget.index}");
+          widget._log.info("widget idx: ${widget.index}, ${widget.state.currentPosition}, sliderValue: ${_currentSliderValue}");
           playerState = PlayerState.playing;
           // });
 
@@ -338,7 +345,8 @@ class _MusicCardState extends State<MusicCard> {
             );
           }
 
-          print("currentSliderValue: ${_currentSliderValue}");
+          // print("currentSliderValue: ${_currentSliderValue}");
+          widget._log.info("currentSliderValue: ${_currentSliderValue}");
           await widget.player.seek(_currentSliderValue);
           await widget.player.pause();
           await widget.player.resume();
@@ -351,7 +359,8 @@ class _MusicCardState extends State<MusicCard> {
 
           playerComESub = widget.player.onPlayerComplete.listen((_) {
             // await widget.player.dispose();
-            print("cxx-- completed running");
+            // print("cxx-- completed running");
+            widget._log.info("cxx-- completed running");
             // if player has completed total duration 
             // then set currentPosition as 0 and playerState as paused
             // else set currentPosition as _currentSliderValue and playerState as paused.
@@ -377,9 +386,9 @@ class _MusicCardState extends State<MusicCard> {
   }
 
   Future<void> loadData() async {
-    // print("currentPosition: ${widget.state.currentPosition}");
+    // // print("currentPosition: ${widget.state.currentPosition}");
     _currentSliderValue = widget.state.currentPosition;
-    // print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
+    // // print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
     _duration = widget.state.totalDuration ;
     playerState = widget.state.playerState ;
 
@@ -388,8 +397,10 @@ class _MusicCardState extends State<MusicCard> {
 
     // await widget.player.setSourceUrl(widget.source);
 
-    print("xxxxxxxxx inside loadDate()");
-    print("${widget.state.currentPosition}, ${widget.state.totalDuration}");
+    // print("xxxxxxxxx inside loadDate()");
+    // print("${widget.state.currentPosition}, ${widget.state.totalDuration}");
+    widget._log.info("xxxxxxxxx inside loadDate()");
+    widget._log.info("${widget.state.currentPosition}, ${widget.state.totalDuration}");
     // Stream<Duration> d = widget.player.onDurationChanged ;
     // if (_duration!.inMilliseconds.toInt() == 0){
     //   ds = d.listen(
@@ -430,26 +441,31 @@ class _MusicCardState extends State<MusicCard> {
     initializePlayer();
     softDisposePlayer();
     initNewPlayer();
-    print("inside initState: ${_currentSliderValue}");
+    // print("inside initState: ${_currentSliderValue}");
+    widget._log.info("inside initState: ${_currentSliderValue}");
   }
 
   @override
   void dispose(){
-    print("disposing stream ${_currentSliderValue}, ${_duration}");
+    // print("disposing stream ${_currentSliderValue}, ${_duration}");
+    widget._log.info("disposing stream ${_currentSliderValue}, ${_duration}");
+
     widget.state.currentPosition = _currentSliderValue ;
     widget.state.playerState = playerState! ;
     widget.state.totalDuration = _duration! ;
-    _currentDurationSubStream!.cancel() ;
+    _currentDurationSubStream?.cancel() ;
     if (playerState == PlayerState.playing){
-      print("initializing dormantCurrentDurationSub");
-      print("${widget.player}");
+      // print("initializing dormantCurrentDurationSub");
+      // print("${widget.player}");
+      widget._log.info("initializing dormantCurrentDurationSub");
+      widget._log.info("${widget.player}");
       widget.state.dormantCurrentDurationSub = widget.player.onPositionChanged.listen(
         (d){
           widget.state.currentPosition = d;
         }
       );
     }
-    ds!.cancel();
+    ds?.cancel();
     // widget.player.dispose();
     initializePlayerSub!.cancel();
     disposePlayerSub!.cancel();
@@ -473,19 +489,21 @@ class _MusicCardState extends State<MusicCard> {
               if (playerState == PlayerState.paused || 
                 playerState == PlayerState.stopped
               ){
-                print('sending a request to acquire a player and start playing');
+                // print('sending a request to acquire a player and start playing');
+                widget._log.info('sending a request to acquire a player and start playing');
                 seekPlayer();
               } 
               else if (playerState == PlayerState.playing){
-                print("stopping the player");
+                // print("stopping the player");
+                widget._log.info("stopping the player");
                 await widget.player.pause();
                 setState(() {
                   playerState = PlayerState.stopped;
                 });
               }
-              // print(playerState);
+              // // print(playerState);
               // if (playerState == PlayerState.stopped || playerState == PlayerState.paused){
-              //   print("hii");
+              //   // print("hii");
               //   await widget.player.resume();
               //   setState(() {
               //     playerState = PlayerState.playing ;
@@ -545,6 +563,8 @@ class MusicCardList extends StatelessWidget {
 
   final ValueNotifier<int> val = ValueNotifier<int>(0);
 
+  final _log = Logger("MusicCardList");
+
   StreamController<PlayerStreamData> playerController = StreamController<PlayerStreamData>.broadcast();
 
   void loadData() {
@@ -569,8 +589,10 @@ class MusicCardList extends StatelessWidget {
     int ownerIdx = -1;
     StreamSubscription<PlayerStreamData> controllerHub = playerController.stream.listen(
       (e) {
-        print("inside controller hub: ");
-        print("current event: ${e.event}, index: ${e.idx}");
+        // print("inside controller hub: ");
+        // print("current event: ${e.event}, index: ${e.idx}");
+        _log.info("inside controller hub: ");
+        _log.info("current event: ${e.event}, index: ${e.idx}");
         if (e.event == PlayerStreamEvent.SEEKER_EVENT){
           if (ownerIdx == -1
           // || ownerIdx == e.idx

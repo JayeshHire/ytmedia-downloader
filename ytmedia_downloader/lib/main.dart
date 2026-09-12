@@ -1,11 +1,46 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'pages/download_page.dart';
 import 'pages/bookmarks_page.dart';
 import 'pages/history_page.dart';
+import 'package:logger/logger.dart' as visual;
+import 'package:logging/logging.dart' as structural;
 
 
 void main() {
+  _initializeLogging() ;
   runApp(MainApp());
+}
+
+void _initializeLogging(){
+  final visualPrinter = visual.Logger(
+    printer: visual.PrettyPrinter(
+      methodCount: 0,
+      colors: true,
+      printEmojis: true
+    )
+  );
+
+  structural.Logger.root.level = kReleaseMode ? structural.Level.WARNING: structural.Level.ALL;
+
+  structural.Logger.root.onRecord.listen((record){
+    if (record.level >= structural.Level.SEVERE) {
+      visualPrinter.e(record.message, error: record.error, stackTrace: record.stackTrace);
+    } else if (record.level >= structural.Level.WARNING) {
+      visualPrinter.w(record.message);
+    } else if (record.level >= structural.Level.INFO) {
+      visualPrinter.i(record.message);
+    } else if (record.level >= structural.Level.CONFIG) {
+      visualPrinter.d(record.message);
+    } else {
+      visualPrinter.t(record.message); // Trace / Finest logs
+    }
+
+    // Example Extension: Send SEVERE logs to crash reports in production
+    if (kReleaseMode && record.level >= structural.Level.SEVERE) {
+      // FirebaseCrashlytics.instance.recordError(record.error, record.stackTrace);
+    }
+  });
 }
 
 class MainApp extends StatelessWidget {
