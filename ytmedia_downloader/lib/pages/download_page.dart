@@ -245,7 +245,7 @@ class _MusicCardState extends State<MusicCard> {
   // Stream<Duration>? _currentDurationStream;
   StreamSubscription<Duration>? _currentDurationSubStream;
   StreamSubscription<Duration>? ds ;
-  StreamSubscription<void>? playerComESub ;
+  StreamSubscription<void>? playerComESub ; // player complete event subscription
   StreamSubscription<PlayerStreamData>? newPlayerSub;
 
   StreamSubscription<PlayerStreamData>? disposePlayerSub;
@@ -260,6 +260,7 @@ class _MusicCardState extends State<MusicCard> {
     newPlayerSub = widget.playerController.stream.listen(
       (e) {
         if (e.event == PlayerStreamEvent.NEW_PLAYER_READY){
+          widget._log.info("'NEW_PLAYER_READY' event has been fired or idx: ${widget.index}");
           widget.player = e.player!;
         }
       }
@@ -277,38 +278,51 @@ class _MusicCardState extends State<MusicCard> {
   void softDisposePlayer(){
     // initialize this 
     disposePlayerSub = widget.playerController.stream.listen(
-      (e){
-        // print("current idx: ${widget.index}");
-        widget._log.info("current idx: ${widget.index}");
-        if (e.event == PlayerStreamEvent.DISPOSE_EVENT_REQ
-        && e.idx == widget.index
-        ){
-          // print("received a soft dispose request of player for idx: ${widget.index}");
-          widget._log.info("received a soft dispose request of player for idx: ${widget.index}");
-          // dispose the player resource here
-          _currentDurationSubStream!.cancel();
-          ds?.cancel();
-          widget.state.dormantCurrentDurationSub?.cancel();
-          widget.state.currentPosition = _currentSliderValue;
-          widget.state.totalDuration = _duration! ;
-          widget.state.playerState = PlayerState.paused ;
+        (e){
+          // print("current idx: ${widget.index}");
+          widget._log.info("current idx: ${widget.index}");
+          if (e.event == PlayerStreamEvent.DISPOSE_EVENT_REQ
+          && e.idx == widget.index
+          ){
+            // print("received a soft dispose request of player for idx: ${widget.index}");
+            widget._log.info("received a soft dispose request of player for idx: ${widget.index}");
+            // dispose the player resource here
+            widget._log.info("before cancel _currentDurationSubStream: ${_currentDurationSubStream}");
+            _currentDurationSubStream?.cancel();
+            _currentDurationSubStream = null;
+            widget._log.info("after cancel _currentDurationSubStream: ${_currentDurationSubStream}");
+            ds?.cancel();
+            widget.state.dormantCurrentDurationSub?.cancel();
+            // widget.state.currentPosition = _currentSliderValue;
+            // widget.state.totalDuration = _duration! ;
+            widget._log.info("checking widget properties: ${widget.state.totalDuration}, currentPosition: ${widget.state.currentPosition}");
+            widget.state.playerState = PlayerState.paused ;
 
-          // setState(() {
-            playerState = PlayerState.paused ;
-          // });
+            widget._log.info("idx ${widget.index} is mounted: $mounted");
+            if (mounted){
+              widget.state.currentPosition = _currentSliderValue;
+              widget.state.totalDuration = _duration! ;
 
-          playerComESub?.cancel();
+              widget._log.info("idx ${widget.index} is mounted");
+              setState(() {
+                playerState = PlayerState.paused ;
+              });
+            } else {
+              playerState = PlayerState.paused ;
+            }
+            
+            playerComESub?.cancel();
 
-          // after disposing the player resource send dispose event complete to the stream.
-          widget.playerController.sink.add(
-            PlayerStreamData(idx: widget.index, event: PlayerStreamEvent.DISPOSE_EVENT_COMP)
-          );
+            // after disposing the player resource send dispose event complete to the stream.
+            widget.playerController.sink.add(
+              PlayerStreamData(idx: widget.index, event: PlayerStreamEvent.DISPOSE_EVENT_COMP)
+            );
+          }
         }
-      }
-    );
+      );
   }
 
-  void initializePlayer() async {
+  void initializePlayer() {
     // this function is fired when the player is not being played by 
     // the current widget.
     // This function acquires the resources of player and sets them.
@@ -385,12 +399,14 @@ class _MusicCardState extends State<MusicCard> {
     );
   }
 
-  Future<void> loadData() async {
+  void loadData() {
     // // print("currentPosition: ${widget.state.currentPosition}");
     _currentSliderValue = widget.state.currentPosition;
     // // print("slider value now is : ${_currentSliderValue.inSeconds.toDouble()}");
     _duration = widget.state.totalDuration ;
     playerState = widget.state.playerState ;
+    widget.state.disposePlayerSub?.cancel();
+    // disposePlayerSub = widget.state.disposePlayerSub ;
 
     // cancelling the sub for dormantCurrentDuration
     widget.state.dormantCurrentDurationSub?.cancel();
@@ -453,6 +469,8 @@ class _MusicCardState extends State<MusicCard> {
     widget.state.currentPosition = _currentSliderValue ;
     widget.state.playerState = playerState! ;
     widget.state.totalDuration = _duration! ;
+    widget.state.disposePlayerSub = disposePlayerSub ;
+
     _currentDurationSubStream?.cancel() ;
     if (playerState == PlayerState.playing){
       // print("initializing dormantCurrentDurationSub");
@@ -468,7 +486,7 @@ class _MusicCardState extends State<MusicCard> {
     ds?.cancel();
     // widget.player.dispose();
     initializePlayerSub!.cancel();
-    disposePlayerSub!.cancel();
+    // disposePlayerSub!.cancel();
     newPlayerSub!.cancel();
     super.dispose();
   }
@@ -537,7 +555,12 @@ class _MusicCardState extends State<MusicCard> {
               _currentSliderValue = Duration(milliseconds: value.toInt());
             });
             // state.sliderValue = _currentSliderValue;
-            await widget.player.seek(Duration(milliseconds: value.toInt()));
+            if (playerState == PlayerState.playing){
+              await widget.player.seek(_currentSliderValue);
+            }
+            else {
+              widget.state.currentPosition = _currentSliderValue ;
+            }
           },
         )
         ],
@@ -552,6 +575,7 @@ class MusicCardStateModel /*extends ChangeNotifier*/ {
   Duration totalDuration;
   PlayerState playerState;
   StreamSubscription<Duration>? dormantCurrentDurationSub ;
+  StreamSubscription<PlayerStreamData>? disposePlayerSub;
 
   MusicCardStateModel(this.currentPosition, this.totalDuration, this.playerState);
 }
